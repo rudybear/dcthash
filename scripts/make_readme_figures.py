@@ -4,6 +4,8 @@
 
 Writes docs/comparison_28.png (six Kodak photos, 28 characters, standard 4x3 BlurHash)
 and docs/lengths.png (one photo at 20/28/40/60/80 characters, best-grid BlurHash).
+Captions: PSNR against the original, and "colour" = Hasler-Suesstrunk colourfulness of the placeholder
+divided by that of the original blurred to placeholder scale (1.00 = as colourful as it should be).
 """
 import os, sys
 import numpy as np
@@ -44,7 +46,8 @@ def codecs(im8, n, standard):
         s = blurhash_best(img, n)
     b = bh.decode_str(s, W, H)
     d = dh.decode(dh.encode(im8, n), W, H)[..., :3] / 255.0
-    return (to8(b), metrics.psnr(b, img)), (to8(d), metrics.psnr(d, img))
+    cap = lambda x: f"{metrics.psnr(metrics.to8(x), img):.1f} dB, colour {metrics.colour_metrics(x, img)['cf_ratio']:.2f}"
+    return (to8(b), cap(b)), (to8(d), cap(d))
 
 
 def sheet(cells, row_labels, path, col_labels=None):
@@ -76,7 +79,7 @@ def main():
     for n in names:
         im8 = load(n)
         (b, pb), (d, pd) = codecs(im8, 28, True)
-        r0.append((im8, "")); r1.append((b, f"{pb:.1f} dB")); r2.append((d, f"{pd:.1f} dB"))
+        r0.append((im8, "")); r1.append((b, pb)); r2.append((d, pd))
     sheet([r0, r1, r2], ["Original", "BlurHash\n4x3, 28 ch", "DCTHash\n28 ch"], os.path.join(ROOT, "docs", "comparison_28.png"))
 
     im8 = load("kodim23.png")
@@ -84,7 +87,7 @@ def main():
     lengths = [20, 28, 40, 60, 80]
     for n in lengths:
         (b, pb), (d, pd) = codecs(im8, n, False)
-        r1.append((b, f"{pb:.1f} dB")); r2.append((d, f"{pd:.1f} dB"))
+        r1.append((b, pb)); r2.append((d, pd))
     sheet([r1, r2], ["BlurHash\nbest grid", "DCTHash"], os.path.join(ROOT, "docs", "lengths.png"),
           col_labels=[f"{n} characters" for n in lengths])
 

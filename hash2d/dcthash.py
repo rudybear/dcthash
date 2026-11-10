@@ -41,7 +41,8 @@ def cos_table():
 def load_tables(path=None):
     t = json.load(open(path or _TABLES))
     arr = lambda v: np.array(v, dtype=np.int64)
-    return dict(cos=arr(t["cos"]), g=[0] + t["g"],
+    g = t["g"] if isinstance(t["g"][0], list) else [t["g"], t["g"]]     # [luma, chroma]; one shared list in the first tables
+    return dict(cos=arr(t["cos"]), g=[[0] + g[0], [0] + g[1]],
                 photo=dict(coefs=arr(t["photo"]["coefs"]), M=arr(t["photo"]["M"]), S=arr(t["photo"]["S"]), seq=arr(t["photo"]["seq"])),
                 smooth=dict(coefs=arr(t["smooth"]["coefs"]), seq=arr(t["smooth"]["seq"])))
 
@@ -84,7 +85,7 @@ def _range(t, i, b, scale_code):
     ch, u, v = (int(x) for x in p["coefs"][i])
     if u == 0 and v == 0:
         return FULL
-    L = max(1, (int(p["S"][i]) * t["g"][b] + 128) >> 8)
+    L = max(1, (int(p["S"][i]) * t["g"][1 if ch else 0][b] + 128) >> 8)
     return max(1, (L * SCALES[scale_code]) >> 2)
 
 
@@ -173,10 +174,10 @@ def _candidate(t, X, length, smooth, scale_code):
     return qs, bits, E
 
 
-def encode(rgba, length=DEFAULT_LENGTH, aspect=True):
+def encode(rgba, length=DEFAULT_LENGTH, aspect=True, _tables=None):
     if not isinstance(length, int) or isinstance(length, bool) or not (MIN_LENGTH <= length <= MAX_LENGTH):
         raise DCTHashError(f"length must be an integer in {MIN_LENGTH}..{MAX_LENGTH}")
-    t = load_tables()
+    t = load_tables(_tables)
     X = analyse(rgba, t["cos"])
     h, w = np.asarray(rgba).shape[:2]
     a = aspect_code(w, h) if aspect else ASPECT_UNSPECIFIED
@@ -216,10 +217,10 @@ def _parse(s):
     return v, n, head & 31
 
 
-def _coefficients(s):
+def _coefficients(s, _tables=None):
     """-> K[channel][v][u] float64, scaled so that pixel = sum K cos cos (8-bit levels, YCbCr)."""
     v, n, _ = _parse(s)
-    t = load_tables()
+    t = load_tables(_tables)
     pos = n - 7
     smooth = bool((v >> pos) & 1)
     sc = 0
@@ -253,14 +254,14 @@ def _to_rgb(ycc):
     return np.clip(np.floor(rgb + 0.5), 0, 255).astype(np.uint8)
 
 
-def decode(s, width, height):
+def decode(s, width, height, _tables=None):
     """-> uint8 (height, width, 4), alpha = 255."""
     for d in (width, height):
         if not isinstance(d, int) or isinstance(d, bool) or d < 1 or d > MAX_SIDE:
             raise DCTHashError(f"width/height must be integers in 1..{MAX_SIDE}")
     if width * height > MAX_AREA:
         raise DCTHashError("output too large")
-    K = _coefficients(s)
+    K = _coefficients(s, _tables)
     cx = np.cos(np.pi * np.arange(NFREQ)[:, None] * (np.arange(width)[None, :] + 0.5) / width)     # [u][x]
     cy = np.cos(np.pi * np.arange(NFREQ)[:, None] * (np.arange(height)[None, :] + 0.5) / height)   # [v][y]
     ycc = np.einsum("vy,cvu,ux->yxc", cy, K, cx)

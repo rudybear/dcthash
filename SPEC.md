@@ -11,9 +11,18 @@ integers. `format/vectors.json` holds test vectors. The reference implementation
 `hash2d/dcthash.py` (Python) and `ts/` (TypeScript).
 
 - SHA-256 of `format/tables.json` for this version:
-  `1c05ee1b6fca2fb87e9edef3a462b09b8074e411dbe156bd205c1277b9413081`
+  `4a6041fb88b9332edc95847e1b3d98eb4d527b44f5cecb963baa42b6aebad196`
 
 Conformance:
+
+Changelog:
+
+- *Colour revision (in place, still version 0; made the day after first publication, before the
+  format had users).* The photo profile's tables were retrained with chroma and low radial
+  frequencies favoured (section 9), and its loading factors `g` became two lists, one for luma
+  and one for chroma. Strings produced with the first tables (SHA-256 `1c05ee1b...`, kept as
+  `format/tables_v0_initial.json`) are still well-formed but decode to a wrong picture; they
+  cannot be told apart from current ones. The version bit was not spent on this.
 
 - **Encoders** are fully specified in integer arithmetic. Two conforming encoders given the
   same pixels, size and length MUST produce the identical string.
@@ -112,11 +121,13 @@ An encoder MAY instead write 31.
 `tables.json` contains, per profile, a list of coefficients `coefs[i] = [channel, u, v]`
 (channel 0 = Y, 1 = Cb, 2 = Cr; u = horizontal frequency, v = vertical frequency, both 0..15)
 and a bit sequence `seq`. The photo profile also has a centre `M[i]` and a scale `S[i]` per
-coefficient, and there is one global list `g[1..8]` of loading factors (times 256).
+coefficient, and there are two global lists of loading factors (times 256), `g[0][1..8]` for
+luma and `g[1][1..8]` for chroma (in `tables.json`, `g` is `[luma, chroma]`, each indexed from
+bit depth 1).
 
 | | photo | smooth |
 |---|---|---|
-| coefficients | 213 (u, v up to 15) | 86 (u up to 7, v up to 6) |
+| coefficients | 142: 64 luma, 78 chroma (u up to 8, v up to 10) | 86 (u up to 7, v up to 6) |
 | sequence length | 569 | 569 |
 
 **Bit allocation.** The number of bits `b_i` of coefficient i in a hash with P payload bits is
@@ -147,7 +158,7 @@ reconstruction:  value = M - L + (2q + 1) * L / 2^b
 For photo-profile coefficients other than DC, with scale code s and `SCALES = [2, 3, 4, 6]`:
 
 ```
-L0 = max(1, floor((S[i] * g[b] + 128) / 256))
+L0 = max(1, floor((S[i] * g[k][b] + 128) / 256))        k = 0 for luma, 1 for chroma
 L  = max(1, floor(L0 * SCALES[s] / 4))
 ```
 
@@ -271,15 +282,32 @@ Input: W x H pixels, 8-bit RGBA with straight alpha, 1 <= W, H <= 16384; a lengt
 | any length 6..96 through one nested bit sequence | no per-length tables | none |
 | aspect ratio stored in the string (5 bits, 31 exact common ratios) | decoder no longer needs the size to choose tables; layout hint | costs 5 bits |
 | one table set for all aspect ratios | 3x smaller tables | -0.00 to -0.02 dB |
-| quantiser range = S[i] x g[b] instead of a free table per (i, b) | 8 numbers instead of 1700 | within 0.01 dB |
+| quantiser range = S[i] x g[b] instead of a free table per (i, b) | 16 numbers instead of about 1700 | within 0.01 dB |
 | cosines evaluated at the output size instead of 32x32 + bicubic | smaller decoder, exact at any size | none measurable |
 | luma DC uniform over 0..255; chroma DC companded over the full gamut | solid white decoded as 245 and pure red as (143, 59, 3) before | none |
 | 2-bit contrast scale | adapts ranges to low/high-contrast photos | +0.08 dB |
 | smooth profile | photo tables gave 17.7 dB on a two-colour gradient where BlurHash gives 31.9 dB, and textured noise on flat images | none on Kodak (never selected at 20+ chars); gradients now 34 dB |
 | integer-only encoder | identical strings across implementations | none |
 
-The net result on Kodak at equal total bits is the same as the experiment's `dct_fixed`
-(18.13 dB at 28 chars = 168 bits, versus 18.11 dB for `dct_fixed` at 21 bytes = 168 bits).
+With RGB-MSE-trained tables the net result on Kodak at equal total bits was the same as the
+experiment's `dct_fixed` (18.13 dB at 28 chars = 168 bits, versus 18.11 dB at 21 bytes).
+
+**Colour revision.** Those tables looked grey and banded on colourful photographs: 9 of 64
+coded coefficients were chroma at 28 characters, and luma bits went to long runs of
+pure-horizontal or pure-vertical frequencies. The photo profile is now trained with the
+squared error of each coefficient weighted by
+
+```
+CW[c] * a(u) * a(v) * (8 if chroma else 1) / (1 + (u^2 + v^2) / 9)^1.5
+```
+
+instead of `CW[c] * a(u) * a(v)`. This affects the coefficient order, the loading factors and
+the bit sequence, and nothing else: the encoder's candidate decision (section 8, step 6) still
+uses the plain weights. At 28 characters 24 of 45 coded coefficients are chroma. Kodak mean
+PSNR at 28 characters went from 18.13 to 17.61 dB (BlurHash: 16.87 best grid, 16.49 for 4x3),
+OKLab chroma error from 2.12 to 1.70 (BlurHash 2.00), and the colourfulness ratio from 0.68 to
+0.80 (BlurHash 0.85). The three constants were chosen by eye on Kodak. The smooth profile is
+unchanged.
 
 ## 10. Known limits
 
@@ -287,9 +315,8 @@ The net result on Kodak at equal total bits is the same as the experiment's `dct
 - Hard-edged flat graphics (logos, UI screenshots) are reproduced poorly by any 28-character
   code; DCTHash is somewhat ahead of BlurHash there (12.6 vs 10.8 dB on one test image) but
   neither is good.
-- In the photo profile, chroma gets few bits (9 of 64 coded coefficients at 28 characters).
-  That maximises PSNR on photographs, but strongly coloured small objects come out less
-  saturated than in BlurHash.
+- The photo profile is tuned for look rather than PSNR (section 9) and costs about 0.5 dB
+  against MSE-trained tables. Small saturated objects are still lost.
 - The profile decision minimises squared error in the coefficient domain, not a perceptual
   measure.
 - The aspect ratio is one of 31 values chosen to be exact for common ratios. An unusual ratio

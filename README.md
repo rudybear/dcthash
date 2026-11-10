@@ -2,19 +2,21 @@
 
 [BlurHash](https://github.com/woltapp/blurhash) turns an image into a 20-30 character string by
 keeping a handful of low-frequency cosine (DCT) components. DCTHash keeps the same idea and the
-same cosine basis but spends the bits differently (YCbCr, many coarse coefficients in a trained
-order), and preserves more of the image at the same string length.
+same cosine basis but spends the bits differently (YCbCr, more and coarser coefficients in a
+trained order), and preserves more of the image at the same string length.
 
 ![Original vs BlurHash vs DCTHash at 28 characters](docs/comparison_28.png)
 
 *Six Kodak photos. Middle row: standard 4x3 BlurHash (28 characters). Bottom row: DCTHash at 28
-characters. Numbers are PSNR against the original (higher is better). Regenerate with
-`python scripts/make_readme_figures.py`.*
+characters. Captions: PSNR against the original (higher is better), and "colour" = colourfulness
+of the placeholder relative to the original blurred to placeholder scale (1.00 = as colourful
+as it should be). Regenerate with `python scripts/make_readme_figures.py`.*
 
-What the picture shows, including the downside: DCTHash keeps more structure (where the light
-and dark regions are), while BlurHash keeps more saturated colour. DCTHash gives chroma few
-coefficients at short lengths, so small saturated objects come out greyer, and its placeholders
-show some horizontal/vertical ringing.
+What the picture shows: DCTHash places light, dark and colour regions more accurately (the
+horizon, the red parrot on the right and the green one on the left, the mint background behind
+the girl). BlurHash is a little more colourful on average, partly because its colour blobs are
+exaggerated or misplaced. Neither can show a small object. An earlier version of the DCTHash
+tables scored about 0.5 dB higher but looked grey and banded; see "Colour revision" below.
 
 The same photo (the parrots) from 20 to 80 characters, with BlurHash given its best component
 grid at each length:
@@ -23,16 +25,20 @@ grid at each length:
 
 | | DCTHash | BlurHash |
 |---|---|---|
-| Mean PSNR, 24 Kodak photos, 28 chars | 18.13 dB | 16.49 dB (4x3), 16.87 dB (best grid per image) |
-| Mean PSNR, 80 chars | 19.24 dB | 17.59 dB (best grid per image) |
-| Images where it wins on PSNR (of 24, every length tested) | 24 | 0 |
-| Decode to 384x256 (Node 22) | 2.1 ms | 17.8 ms (`blurhash` 2.0.5) |
-| Encode from 384x256 (Node 22) | 0.6 ms | 128 ms |
+| Mean PSNR, 24 Kodak photos, 28 chars | 17.61 dB | 16.49 dB (4x3), 16.87 dB (best grid per image) |
+| Mean PSNR, 80 chars | 18.64 dB | 17.59 dB (best grid per image) |
+| Images where it wins on PSNR, of 24 | 22 at 20 chars, 24 at 28 to 80 chars | 2 at 20 chars, 0 at 28 to 80 |
+| Chroma error at 28 chars (OKLab, lower is better) | 1.70 | 2.07 (4x3), 2.00 (best grid) |
+| Colourfulness kept at 28 chars (1 = all) | 0.80 | 0.83 (4x3), 0.85 (best grid) |
+| Saturation kept in the most saturated tenth, 28 chars | 0.68 | 0.63 (4x3), 0.66 (best grid) |
+| Decode to 384x256 (Node 22) | 2.3 ms | 18.3 ms (`blurhash` 2.0.5) |
+| Encode from 384x256 (Node 22) | 0.6 ms | 132 ms |
 | String alphabet | base64url, 6 bits/char | base83, 6.375 bits/char |
 | Valid lengths | any, 6 to 96 chars | set by the component grid |
 | Extras readable from the string | average colour, approximate aspect ratio | average colour |
 
-PSNR is not a perceptual study: no user test was run on which placeholder people prefer.
+None of these numbers is a perceptual study: no user test was run on which placeholder people
+prefer.
 
 The demo page (`ts/demo/index.html`, opens from disk with no server) encodes any image you drop
 with both, at the same string length:
@@ -52,7 +58,7 @@ name, **DCTHash**, a Python reference and a TypeScript library.
 ```ts
 import { encode, decode, averageColor, aspectRatio, isValid } from "dcthash";
 
-const hash = encode(imageData.data, imageData.width, imageData.height);   // "UT0B3siLvcRNUjUbdUXWqkGZ5SJW"
+const hash = encode(imageData.data, imageData.width, imageData.height);   // "UTzKRDGfAsH-8SPEQ76JpDI2sIqs"
 const rgba = decode(hash, 32, 21);       // Uint8ClampedArray; draw small, let the browser scale it
 averageColor(hash);                      // { r, g, b } without decoding pixels
 aspectRatio(hash);                       // 1.5
@@ -76,26 +82,92 @@ JSON and databases). Header: 1 version bit, 5 bits of aspect ratio (31 common ra
 bit, and in the photo profile a 2-bit contrast scale. The rest is quantised DCT coefficients of
 a 32x32 YCbCr version of the image, in a trained order with a trained number of bits each (1 to
 8). Any length works because the bit allocation is one nested sequence. Two table sets:
-"photo" (trained on photographs) and "smooth" (for gradients and flat colours; full-range
+"photo" (trained on photographs, with chroma and low frequencies favoured) and "smooth" (for gradients and flat colours; full-range
 quantisers with an exact zero). The encoder is integer-only, so every implementation produces
 the same string; the decoder sums cosines directly at the requested size.
 
 ### Frozen format vs BlurHash at equal string length (24 Kodak images, 384x256)
 
-| chars | BlurHash, best grid | DCTHash | gain (± s.e.m.) | wins | PSNR vs blurred ref: BlurHash / DCTHash |
-|---|---|---|---|---|---|
-| 20 | 16.65 dB | 17.76 dB | +1.11 ± 0.13 | 24/24 | 18.93 / 20.87 |
-| 28 | 16.87 dB (standard 4x3: 16.49) | 18.13 dB | +1.26 ± 0.14 | 24/24 | 19.28 / 21.57 |
-| 40 | 17.12 dB | 18.49 dB | +1.37 ± 0.14 | 24/24 | 19.67 / 22.30 |
-| 60 | 17.40 dB | 18.94 dB | +1.54 ± 0.15 | 24/24 | 20.14 / 23.27 |
-| 80 | 17.59 dB | 19.24 dB | +1.65 ± 0.15 | 24/24 | 20.47 / 23.96 |
+| chars | method | PSNR | gain vs BlurHash (± s.e.m.) | wins | PSNR vs blurred | OKLab chroma error | colourfulness kept | top saturation kept |
+|---|---|---|---|---|---|---|---|---|
+| 20 | BlurHash, best grid | 16.65 | | | 18.93 | 2.07 | 0.79 | 0.62 |
+| 20 | **DCTHash** | **17.30** | +0.65 ± 0.09 | 22/24 | 20.03 | 1.82 | 0.77 | 0.64 |
+| 28 | BlurHash 4x3 | 16.49 | | | 18.68 | 2.07 | 0.83 | 0.63 |
+| 28 | BlurHash, best grid | 16.87 | | | 19.28 | 2.00 | 0.85 | 0.66 |
+| 28 | **DCTHash** | **17.61** | +0.74 ± 0.09 | 24/24 | 20.58 | 1.70 | 0.80 | 0.68 |
+| 40 | BlurHash, best grid | 17.12 | | | 19.67 | 1.91 | 0.88 | 0.69 |
+| 40 | **DCTHash** | **17.91** | +0.79 ± 0.09 | 24/24 | 21.14 | 1.54 | 0.85 | 0.73 |
+| 60 | BlurHash, best grid | 17.40 | | | 20.14 | 1.83 | 0.94 | 0.75 |
+| 60 | **DCTHash** | **18.30** | +0.90 ± 0.09 | 24/24 | 21.89 | 1.37 | 0.88 | 0.78 |
+| 80 | BlurHash, best grid | 17.59 | | | 20.47 | 1.80 | 0.96 | 0.77 |
+| 80 | **DCTHash** | **18.64** | +1.04 ± 0.10 | 24/24 | 22.59 | 1.23 | 0.92 | 0.82 |
 
-Source: `results/frozen_tables.md` (`scripts/eval_frozen.py`). Against the 4x3 BlurHash that
-people actually use, the gain at 28 characters is +1.64 dB. DCTHash gets 6 bits per character
-and BlurHash 6.375, so this comparison gives DCTHash about 6% fewer bits; it also spends 7 or 9
-bits on the header. The margin is therefore a little smaller than the experiment's `dct_fixed`
-figures at equal bytes (+1.2 to +1.7 dB), but at equal total bits the frozen format matches
-`dct_fixed` (18.13 dB at 28 chars = 168 bits vs 18.11 dB at 21 bytes).
+Source: `results/frozen_tables.md` (`scripts/eval_frozen.py`), which also lists SSIM, overall
+OKLab error and the initial tables. Gain and wins are against best-grid BlurHash; against the
+4x3 BlurHash that people actually use, the gain at 28 characters is +1.12 dB. The colour
+columns are defined in `hash2d/metrics.py: colour_metrics` and compare with the original
+blurred at sigma = 8 px: mean OKLab chroma-plane distance x100 (lower is better),
+Hasler-Suesstrunk colourfulness ratio, and mean OKLab chroma kept over the reference's most
+saturated 10% of pixels (both 1.00 = all kept). DCTHash gets 6 bits per character and
+BlurHash 6.375, and DCTHash spends 7 or 9 bits on its header.
+
+### Colour revision (what changed after first publication)
+
+The tables first published were trained to minimise RGB squared error. They scored 18.13 dB at
+28 characters but looked grey-brown and banded on colourful photos. Measured causes
+(`scripts/explore_colour.py`, on Kodak at 28 characters):
+
+- **Too few chroma coefficients.** Only 9 of the 64 coded coefficients were chroma (24 of 159
+  bits). 90% of the chroma error came from chroma coefficients that were never transmitted, 7%
+  from quantisation and under 3% from clipping, so wider ranges or a chroma scale field could
+  not have fixed it. Making every transmitted chroma coefficient exact left colourfulness at
+  0.67; adding the 4x4 lowest chroma frequencies raised it to 0.84.
+- **Banding was a choice of coefficients, not ringing.** Luma bits went to long runs of
+  pure-vertical and pure-horizontal frequencies (up to about v = 10 with u = 0), which have the
+  highest variance in photographs, while the mixed frequencies needed to localise them were
+  not coded. The result is full-width stripes.
+
+The fix changes only how the photo tables are trained (`scripts/train_frozen.py`): chroma
+errors are weighted 8x, and every coefficient's weight is divided by
+`(1 + (u^2 + v^2) / 9)^1.5`, which favours a compact, roughly isotropic low-pass set. At 28
+characters 24 of 45 coded coefficients are now chroma. The bit stream layout is unchanged
+except that chroma has its own list of loading factors.
+
+| 28 chars, Kodak mean | PSNR | SSIM | PSNR vs blurred | OKLab chroma error | colourfulness kept | top saturation kept |
+|---|---|---|---|---|---|---|
+| BlurHash 4x3 | 16.49 | 0.442 | 18.68 | 2.07 | 0.83 | 0.63 |
+| DCTHash, initial tables | 18.13 | 0.462 | 21.57 | 2.12 | 0.68 | 0.54 |
+| DCTHash, now | 17.61 | 0.459 | 20.58 | 1.70 | 0.80 | 0.68 |
+
+The cost is 0.46 to 0.64 dB of PSNR depending on length (0.52 dB at 28 characters).
+
+How it looks, judged on the sheets in `results/colour/` (all 24 Kodak images at 28 and 40
+characters: original, BlurHash, initial tables, now):
+
+- Clearly better than the initial tables on colourful photos: the parrots, the girl in the red
+  sweater, the caps, the raft, the red barn, the boat on teal water. Stripes are gone or much
+  weaker on all of them.
+- Softer than the initial tables on near-neutral photos (the sailing boats, the aeroplane, the
+  painted house, the beach): some luma structure was traded away and there was little colour
+  to gain.
+- Against BlurHash 4x3: colour regions are in the right places and the picture has more
+  structure, but BlurHash is still slightly more saturated on a few images (the caps, the
+  girl), and small saturated objects (the hibiscus flower, the swimsuits) are lost by both.
+- A bright halo from luma overshoot remains on the girl photo.
+
+Guarding against overfitting: the tables are trained on Picsum only, but the three numbers
+(8, 9 and 1.5) were picked by eye on Kodak sheets from about twenty settings, so Kodak is no
+longer a clean test set for them. On eight scikit-image sample photos that are in neither set
+(`results/colour/holdout.md`) the pattern is the same at 28 characters: PSNR 17.92 -> 17.59
+(BlurHash best grid 16.77), chroma error 2.37 -> 1.72 (BlurHash 1.98), colourfulness
+0.66 -> 0.78 (BlurHash 0.81), top saturation 0.63 -> 0.75 (BlurHash 0.72). A milder setting
+(chroma x4, exponent 1) costs only 0.3 dB but keeps visible banding.
+
+Tried and not adopted: a separate chroma scale field (lower chroma error by 3%, no visible
+difference, 2 header bits); quantisers with an exact zero level in the photo profile (slightly
+calmer, 0.05 dB worse, no clear visual gain); a decoder-side high-frequency taper (no visible
+effect on the banding). The initial tables are kept as `format/tables_v0_initial.json` for
+comparison only.
 
 On non-photographic content (measured on six synthetic images, not a dataset), at 28 chars:
 
@@ -106,21 +178,22 @@ On non-photographic content (measured on six synthetic images, not a dataset), a
 | solid teal | 43.6 dB | 46.9 dB | smooth |
 | solid white | 41.3 dB | 48.1 dB | smooth |
 | low-contrast grey wave | 39.7 dB | 40.0 dB | smooth |
-| flat shapes with hard edges | 10.8 dB | 12.6 dB | photo |
+| flat shapes with hard edges | 10.8 dB | 12.3 dB | photo |
 
 Before the smooth profile was added, the photo tables alone scored 17.7 dB on the first row
-and 33 dB on solid white. That is the main thing that changed while freezing; all changes are
-listed in `SPEC.md` section 9.
+and 33 dB on solid white. All changes made while freezing are listed in `SPEC.md` section 9.
+These were re-checked after the colour revision (`results/colour/synthetic.md`); solid black,
+white, red and grey still decode to within 1 level of the right average colour.
 
 ### TypeScript library: size and speed
 
 | | DCTHash | `blurhash` 2.0.5 (4x3) |
 |---|---|---|
-| decoder bundle, minified / gzip | 7.6 kB / 4.1 kB | - |
-| full library, minified / gzip | 10.8 kB / 5.5 kB | - |
+| decoder bundle, minified / gzip | 7.1 kB / 3.9 kB | - |
+| full library, minified / gzip | 10.2 kB / 5.3 kB | - |
 | decode to 32x21 | 0.03 ms | 0.13 ms |
-| decode to 384x256 | 2.1 ms | 17.8 ms |
-| encode from 384x256 | 0.6 ms | 128 ms |
+| decode to 384x256 | 2.3 ms | 18.3 ms |
+| encode from 384x256 | 0.6 ms | 132 ms |
 
 Node 22, one machine, warm (`results/ts_bench.md`); not measured in browsers or on phones.
 About half of the decoder bundle is the tables.
@@ -137,16 +210,16 @@ About half of the decoder bundle is the tables.
   rejects the same malformed input.
 - `scripts/train_frozen.py` re-run reproduces `format/tables.json` byte for byte (from the
   cached coefficient analysis in `data/`).
+- All of the above was re-run after the colour revision, with regenerated vectors.
 - The demo page was rendered from `file://` in headless Chrome and showed all three images and
   both strings for the built-in sample. Dropping a file was not exercised automatically.
 
 ### Limits and decisions worth revisiting
 
 - **No alpha.** Transparent pixels are composited over white.
-- **Colour in the photo profile is conservative.** Chroma gets 9 of the 64 coded coefficients
-  at 28 chars, which maximises PSNR on photos but makes small saturated objects greyer than
-  BlurHash renders them (visible on the demo's sample image). Raising the chroma weight would
-  trade PSNR for colourfulness; no perceptual study was done.
+- **The photo tables are tuned for look, not PSNR.** The chroma weight (8x) and the
+  low-frequency prior cost about 0.5 dB and were chosen by eye on Kodak; no perceptual study
+  was done. Small saturated objects are still lost, as in BlurHash.
 - **Aspect ratio** is one of 31 exact common ratios. Unusual ratios are off by up to 9.5%
   (15.5% beyond 3:1). A uniform log scale would be within 4.4% everywhere but exact nowhere.
 - **Base64url instead of base83** costs 6% of the bits per character in exchange for URL
@@ -164,6 +237,10 @@ About half of the decoder bundle is the tables.
 .venv/bin/python scripts/make_vectors.py      # -> format/vectors.json
 .venv/bin/python -m tests.test_dcthash
 .venv/bin/python scripts/eval_frozen.py       # -> results/frozen_tables.md, results/frozen_eval.csv
+.venv/bin/python scripts/explore_colour.py sheets     # -> results/colour/kodak_{28,40}ch_{1,2,3}.png
+.venv/bin/python scripts/explore_colour.py holdout    # -> results/colour/holdout.md, holdout_28ch.png
+.venv/bin/python scripts/explore_colour.py synthetic  # -> results/colour/synthetic.md
+.venv/bin/python scripts/make_readme_figures.py       # -> docs/comparison_28.png, docs/lengths.png
 cd ts && npm install && npm test && npm run bench
 # demo: open ts/demo/index.html in a browser (after npm run build / npm test)
 ```

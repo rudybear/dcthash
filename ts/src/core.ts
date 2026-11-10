@@ -89,7 +89,7 @@ export function companded(p: Profile, i: number): boolean {
 /** Half-range L (T units) of the uniform quantiser of coefficient i at bit depth b >= 1. */
 export function range(p: Profile, i: number, b: number, scale: number): number {
   if (p.smooth || !(p.u[i] | p.v[i])) return FULL;
-  let L = Math.floor((p.s[i] * G[b - 1] + 128) / 256);
+  let L = Math.floor((p.s[i] * G[p.ch[i] ? 1 : 0][b - 1] + 128) / 256);
   if (L < 1) L = 1;
   L = Math.floor((L * SCALES[scale]) / 4);
   return L < 1 ? 1 : L;

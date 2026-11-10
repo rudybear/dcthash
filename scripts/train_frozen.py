@@ -27,6 +27,14 @@ SEQ_LEN = 6 * dh.MAX_LENGTH - 7
 CHAN, VV, UU = [g.ravel() for g in np.meshgrid(np.arange(3), np.arange(16), np.arange(16), indexing="ij")]
 WT = np.array(dh.CWEIGHT)[CHAN] * np.where(UU > 0, 2, 1) * np.where(VV > 0, 2, 1)
 ISDC = (UU == 0) & (VV == 0)
+# Photo-profile training objective ("look" weights).  Plain RGB-MSE weights (WT) give the highest PSNR but a grey,
+# plaid-looking placeholder: only 9 of 64 coded coefficients were chroma at 28 characters, and luma bits went to
+# long runs of pure-horizontal / pure-vertical frequencies.  Two changes, both only in how tables are trained:
+#   CHROMA_WEIGHT  chroma errors count 8x  -> about half of the bits go to low-frequency chroma
+#   radial prior   weight / (1 + (u^2 + v^2) / R0^2)^GAMMA  -> a compact, roughly isotropic low-pass set
+# CHROMA_WEIGHT, R0 and GAMMA were chosen by eye on Kodak comparison sheets (see README, "Colour revision").
+CHROMA_WEIGHT, R0, GAMMA = 8.0, 3.0, 1.5
+WT_LOOK = WT * np.where(CHAN > 0, CHROMA_WEIGHT, 1.0) * (1.0 + (UU ** 2 + VV ** 2) / R0 ** 2) ** (-GAMMA)
 
 
 def crops(img, cls, rng, n=4):
@@ -153,8 +161,10 @@ def main():
         np.save(cache, allx)
     X = allx / 64.0                                                 # T units
     print("photo profile:", len(X), "crops")
-    order = np.argsort(-X.var(0) * WT)[:N_POOL]
+    pool = np.argsort(-X.var(0) * WT_LOOK)[:N_POOL]
+    order = pool[np.argsort(-X[:, pool].var(0) * WT_LOOK[pool])]
     x = X[:, order]
+    wl = WT_LOOK[order]
     M = np.round(x.mean(0)).astype(np.int64)
     S = np.clip(np.round(x.std(0)), 1, 65535).astype(np.int64)
     # DC terms get fixed full-gamut quantisers so that pure black / white / saturated images are representable
@@ -163,19 +173,22 @@ def main():
     M[dc & (ch == 0)] = dh.FULL
     M[dc & (ch > 0)] = 0
     S[dc] = dh.FULL
-    ac = ~dc
-    g = []                                                          # loading factors x256 per bit depth, non-DC
-    for b in range(1, dh.MAX_BITS + 1):
-        cand = [int(round(v * 256)) for v in np.geomspace(0.5, 12.0, 61)]
-        tot = [float((uniform_mse(x[:, ac], M[ac], np.maximum(1, (S[ac] * G + 128) >> 8), b) * WT[order][ac] / S[ac] ** 2).sum()) for G in cand]
-        g.append(cand[int(np.argmin(tot))])
-    print("  loading factors x256:", g)
+    g = []                                                          # loading factors x256 per bit depth: [luma, chroma] non-DC
+    for grp in (0, 1):
+        sel = ~dc & ((ch > 0) == bool(grp))
+        g.append([])
+        for b in range(1, dh.MAX_BITS + 1):
+            cand = [int(round(v * 256)) for v in np.geomspace(0.5, 24.0, 85)]
+            tot = [float((uniform_mse(x[:, sel], M[sel], np.maximum(1, (S[sel] * G + 128) >> 8), b) * wl[sel] / S[sel] ** 2).sum()) for G in cand]
+            g[grp].append(cand[int(np.argmin(tot))])
+    print("  loading factors x256 [luma, chroma]:", g)
     D = np.zeros((len(order), dh.MAX_BITS + 1))
     D[:, 0] = ((x - M) ** 2).mean(0)
     for b in range(1, dh.MAX_BITS + 1):
-        L = np.where(dc, dh.FULL, np.maximum(1, (S * g[b - 1] + 128) >> 8))
+        gb = np.where(ch > 0, g[1][b - 1], g[0][b - 1])
+        L = np.where(dc, dh.FULL, np.maximum(1, (S * gb + 128) >> 8))
         D[:, b] = np.where(dc & (ch > 0), compand_mse(x, b), uniform_mse(x, M, L, b))
-    photo = pack(order, bit_sequence(D * WT[order][:, None]), {"M": M, "S": S})
+    photo = pack(order, bit_sequence(D * wl[:, None]), {"M": M, "S": S})
     describe("photo", photo)
 
     # ---------------- smooth profile

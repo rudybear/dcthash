@@ -1,8 +1,9 @@
 # dcthash (TypeScript)
 
 Compact image placeholders: a 6 to 96 character string that decodes to a blurry preview, an
-average colour and an approximate aspect ratio. A BlurHash alternative that keeps about 1.3 dB
-more detail on photographs at the same string length. Zero runtime dependencies, ESM, works in
+average colour and an approximate aspect ratio. A BlurHash alternative that scores about 0.7 dB
+higher on photographs at the same string length (1.1 dB against the usual 4x3 BlurHash) and
+places colour more accurately. Zero runtime dependencies, ESM, works in
 browsers and Node. Format: [`../SPEC.md`](../SPEC.md).
 
 ```ts
@@ -65,15 +66,15 @@ Measured with Node 22 on the development machine (see `../results/ts_bench.md`):
 
 | bundle | minified | gzip |
 |---|---|---|
-| decoder + helpers | 7.6 kB | 4.1 kB |
-| encoder | 8.6 kB | 4.5 kB |
-| everything | 10.8 kB | 5.5 kB |
+| decoder + helpers | 7.1 kB | 3.9 kB |
+| encoder | 8.1 kB | 4.3 kB |
+| everything | 10.2 kB | 5.3 kB |
 
 About half of the decoder bundle is the frozen tables.
 
 | | DCTHash (28 chars) | blurhash 2.0.5 (4x3, 28 chars) |
 |---|---|---|
 | decode 32x21 | 0.03 ms | 0.13 ms |
-| decode 384x256 | 2.1 ms | 17.8 ms |
-| encode from 384x256 | 0.6 ms | 128 ms |
+| decode 384x256 | 2.3 ms | 18.3 ms |
+| encode from 384x256 | 0.6 ms | 132 ms |
 | average colour | 0.003 ms | n/a |
