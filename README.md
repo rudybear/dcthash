@@ -5,6 +5,11 @@ keeping a handful of low-frequency cosine (DCT) components. DCTHash keeps the sa
 same cosine basis but spends the bits differently (YCbCr, more and coarser coefficients in a
 trained order), and preserves more of the image at the same string length.
 
+![DCTHash and ShapeHash overview](docs/overview.png)
+
+*DCTHash next to its 3D sibling, [ShapeHash](https://github.com/rudybear/shapehash), which does
+the same for glTF models.*
+
 ![Original vs BlurHash vs DCTHash at 28 characters](docs/comparison_28.png)
 
 *Six Kodak photos. Middle row: standard 4x3 BlurHash (28 characters). Bottom row: DCTHash at 28
