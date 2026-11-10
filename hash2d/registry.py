@@ -5,6 +5,7 @@ from .codecs.bspline import BSplineGrid
 from .codecs.splat import SplatCodec
 from .codecs.siren import Siren
 from .codecs.hybrid import HybridDctSplat, BestFit
+from .codecs.dcthash_codec import DCTHashCodec
 
 
 def build(inner_cache=None):
@@ -21,6 +22,7 @@ def build(inner_cache=None):
         SplatCodec("add"), SplatCodec("norm"), SplatCodec("voronoi"),
         Siren(),
         HybridDctSplat(dct_ac),
+        DCTHashCodec(),      # the shipped format, added after the experiment for reference
     ]
     by = {c.name: c for c in base}
     fast = [by[n] for n in ("dct_ac", "pca_ac", "haar_ac", "legendre_ac", "bspline_grid", "blurhash")]

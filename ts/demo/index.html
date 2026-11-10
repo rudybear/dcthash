@@ -78,8 +78,9 @@
   </div>
 
   <footer>PSNR is measured against the image shown on the left, at the displayed resolution; higher is better.
-    BlurHash here is the <code style="display:inline;padding:1px 4px">blurhash</code> npm package with the
-    chosen grid (swapped for portrait images). DCTHash also stores an approximate aspect ratio and exposes
+    BlurHash is encoded as in the reference C implementation with the chosen grid (swapped for portrait
+    images) and decoded with the <code style="display:inline;padding:1px 4px">blurhash</code> npm package;
+    that package's own encoder clips strong negative components, which would understate BlurHash. DCTHash also stores an approximate aspect ratio and exposes
     the average colour without decoding.</footer>
 </main>
 <script src="demo.js"></script>

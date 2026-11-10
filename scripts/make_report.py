@@ -17,15 +17,16 @@ MAIN_BUDGETS = [16, 24, 32, 48, 64]
 METRICS = [("psnr", "PSNR dB", 2), ("ssim", "SSIM", 3), ("ms_ssim", "MS-SSIM", 3), ("lpips", "LPIPS (lower=better)", 3),
            ("psnr_blur", "PSNR vs blurred ref", 2), ("ssim_blur", "SSIM vs blurred ref", 3), ("lpips_blur", "LPIPS vs blurred ref", 3)]
 # categorical palette (fixed order, <= 8 series per chart), light surface
-PAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+PAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948", "#1f1f1e"]
 INK, MUTED, GRID, SURFACE = "#1f1f1e", "#6b6a63", "#e6e4dc", "#ffffff"
 
 
 def load():
     rows = list(csv.DictReader(open(os.path.join(RES, "results.csv"))))
-    small = os.path.join(RES, "results_small.csv")      # optional extra run at very small budgets (fast codecs only)
-    if os.path.exists(small):
-        rows += list(csv.DictReader(open(small)))
+    # optional extra runs: very small budgets (fast codecs only), and the shipped DCTHash format
+    for extra in ("results_small.csv", "results_dcthash.csv"):
+        if os.path.exists(os.path.join(RES, extra)):
+            rows += list(csv.DictReader(open(os.path.join(RES, extra))))
     for r in rows:
         for k, v in r.items():
             if k not in ("image", "method", "chosen"):
@@ -179,17 +180,17 @@ def main():
     by, summary, methods = tables(rows)
     rd_plot(by, [("blurhash", "BlurHash (best grid)"), ("dct_fixed", "DCT, fixed-length"), ("dct_ac", "DCT, arithmetic-coded"),
                  ("bspline_grid", "B-spline thumbnail"), ("gauss_norm", "Gaussian splats"), ("soft_voronoi", "soft Voronoi"),
-                 ("siren", "SIREN MLP"), ("bestfit_all", "best-fit (all)")], "rd_families.png",
+                 ("siren", "SIREN MLP"), ("bestfit_all", "best-fit (all)"), ("dcthash", "DCTHash (shipped format)")], "rd_families.png",
             "Rate-distortion by representation family (24 Kodak images, 384x256, every point is a real byte payload)")
     rd_plot(by, [("blurhash", "BlurHash (best grid)"), ("blurhash_gamma", "BlurHash, gamma-space"), ("dct_fixed", "DCT fixed-length"),
                  ("dct_ac", "DCT arithmetic-coded"), ("pca_ac", "PCA/KLT arithmetic-coded"), ("legendre_ac", "Legendre arithmetic-coded"),
-                 ("haar_ac", "Haar arithmetic-coded"), ("dct_ac+gauss", "DCT + residual Gaussians")], "rd_transforms.png",
+                 ("haar_ac", "Haar arithmetic-coded"), ("dct_ac+gauss", "DCT + residual Gaussians"), ("dcthash", "DCTHash (shipped format)")], "rd_transforms.png",
             "Rate-distortion within the linear-transform family (same quantiser/coder, basis varies)")
     gain_plot(summary, [("dct_ac", "DCT arithmetic-coded"), ("pca_ac", "PCA arithmetic-coded"), ("dct_fixed", "DCT fixed-length"),
                         ("bestfit_all", "best-fit (all)"), ("bspline_grid", "B-spline thumbnail"), ("gauss_norm", "Gaussian splats"),
-                        ("siren", "SIREN MLP"), ("blurhash_gamma", "BlurHash gamma-space")], "gain_over_blurhash.png")
+                        ("siren", "SIREN MLP"), ("blurhash_gamma", "BlurHash gamma-space"), ("dcthash", "DCTHash (shipped format)")], "gain_over_blurhash.png")
     images = load_test_images()
-    show = ["blurhash", "dct_fixed", "dct_ac", "pca_ac", "haar_ac", "bspline_grid", "gauss_norm", "soft_voronoi", "siren", "dct_ac+gauss"]
+    show = ["blurhash", "dcthash", "dct_fixed", "dct_ac", "pca_ac", "haar_ac", "bspline_grid", "gauss_norm", "soft_voronoi", "siren", "dct_ac+gauss"]
     land = [n for n, im in images if im.shape[1] > im.shape[0]]
     port = [n for n, im in images if im.shape[1] < im.shape[0]]
     pick = [n for n in ("kodim03", "kodim05", "kodim07", "kodim15", "kodim20", "kodim21", "kodim23", "kodim24") if n in land] or land[:6]

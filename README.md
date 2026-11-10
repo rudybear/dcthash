@@ -50,6 +50,11 @@ with both, at the same string length:
 
 ![Demo page](docs/demo.png)
 
+The demo encodes BlurHash as the reference C implementation does. The `blurhash` npm package's
+encoder (2.0.5) sizes its quantiser from the largest signed coefficient instead of the largest
+magnitude, which clips strong negative components and would understate BlurHash (15.98 dB
+instead of 17.40 dB on this sample); see `ts/demo/blurhash-ref.ts`.
+
 This repository contains the frozen format (spec, TypeScript library, Python reference), and
 below it the experiment that led to it: (a) a survey of candidate function families, (b) a
 pipeline with a common codec interface that runs every candidate at equal byte budgets and can
@@ -288,6 +293,12 @@ at most that many bytes. The gain holds on 24/24 images at every budget (paired 
 The scale matters when reading these numbers: in this regime everything lives between 16.5 dB
 (8 float coefficients) and 20.2 dB (320 float coefficients); see "How much room is there".
 A 1.5 to 2 dB gain is the difference between about 16 and about 100 unquantized DCT coefficients.
+
+The plots and grids below were regenerated after the format was frozen and now include the
+shipped format as `dcthash` / "DCTHash (shipped format)" (`results/results_dcthash.csv`, same
+harness, string length floor(8B/6) characters for a budget of B bytes). The other series are the
+phase-1 candidates exactly as tested; `dct_fixed` is the PSNR-trained ancestor of DCTHash, which
+is why it scores about 0.5 dB higher but looks greyer and more banded than `dcthash`.
 
 ![rate-distortion by family](results/rd_families.png)
 

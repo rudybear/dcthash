@@ -1,5 +1,6 @@
 // Demo: original vs BlurHash vs DCTHash at the same string length.  Bundled to demo.js (IIFE).
-import { encode as bhEncode, decode as bhDecode } from "blurhash";
+import { decode as bhDecode } from "blurhash";
+import { encodeBlurHash as bhEncode } from "./blurhash-ref";
 import { encode, decode, averageColor, aspectRatio } from "../src/index";
 
 const GRIDS: [number, number][] = [[3, 3], [4, 3], [5, 3], [4, 4], [5, 4], [6, 4], [6, 5], [7, 5], [8, 5], [9, 5]];
