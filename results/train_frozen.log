@@ -1,0 +1,14 @@
+photo profile: 23832 crops
+  loading factors x256: [350, 564, 775, 1065, 1388, 1907, 2621, 3072]
+  photo @  6 chars:  11 coefficients coded, max 4 bits, DC bits [4, 3, 3], chroma coefficients 2
+  photo @ 12 chars:  26 coefficients coded, max 5 bits, DC bits [5, 4, 4], chroma coefficients 4
+  photo @ 28 chars:  64 coefficients coded, max 6 bits, DC bits [6, 5, 5], chroma coefficients 9
+  photo @ 60 chars: 138 coefficients coded, max 8 bits, DC bits [7, 6, 6], chroma coefficients 19
+  photo @ 96 chars: 212 coefficients coded, max 8 bits, DC bits [7, 6, 6], chroma coefficients 31
+smooth profile: 6000 synthetic images
+  smooth @  6 chars:   8 coefficients coded, max 5 bits, DC bits [5, 5, 4], chroma coefficients 5
+  smooth @ 12 chars:  14 coefficients coded, max 6 bits, DC bits [6, 6, 5], chroma coefficients 8
+  smooth @ 28 chars:  29 coefficients coded, max 7 bits, DC bits [7, 7, 7], chroma coefficients 18
+  smooth @ 60 chars:  55 coefficients coded, max 8 bits, DC bits [8, 8, 8], chroma coefficients 32
+  smooth @ 96 chars:  86 coefficients coded, max 8 bits, DC bits [8, 8, 8], chroma coefficients 52
+wrote /home/rudybear/sources/3dhash/hash2d/scripts/../format/tables.json 10894 bytes

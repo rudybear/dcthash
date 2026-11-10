@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DCTHash vs BlurHash</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1f1f1e; --muted: #6b6a63; --line: #dddbd2; --accent: #2a78d6;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --panel: #1f1f1e; --ink: #f0efec; --muted: #a6a59c; --line: #3a3a37; --accent: #5598e7; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.45; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.lead { margin: 0 0 20px; color: var(--muted); max-width: 70ch; }
+  #drop {
+    border: 2px dashed var(--line); border-radius: 10px; padding: 18px; background: var(--panel);
+    display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+  }
+  #drop.over { border-color: var(--accent); }
+  #drop label { font-size: .9rem; color: var(--muted); }
+  select, button, input[type=file] { font: inherit; color: inherit; }
+  select, button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  button { cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 20px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+  figcaption { font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  figcaption span { font-weight: 400; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 6px; background: var(--bg); }
+  code {
+    display: block; margin-top: 10px; padding: 8px; background: var(--bg); border-radius: 6px; font-size: .8rem;
+    overflow-wrap: anywhere; min-height: 2.6em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .meta { margin-top: 6px; font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #error { color: #d03b3b; margin-top: 12px; min-height: 1.2em; }
+  footer { margin-top: 24px; font-size: .85rem; color: var(--muted); max-width: 80ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DCTHash vs BlurHash, same string length</h1>
+  <p class="lead">Drop an image. Both placeholders are encoded and decoded in your browser; nothing is uploaded.
+    The BlurHash component grid sets the string length, and DCTHash is encoded at exactly that many characters.</p>
+
+  <div id="drop">
+    <input type="file" id="file" accept="image/*" aria-label="Choose an image">
+    <label>BlurHash components
+      <select id="grid" aria-label="BlurHash component grid"></select>
+    </label>
+    <button id="sample" type="button">Use sample image</button>
+    <span class="meta" id="size"></span>
+  </div>
+  <div id="error" role="alert"></div>
+
+  <div class="grid">
+    <figure>
+      <figcaption>Original <span id="m-orig"></span></figcaption>
+      <canvas id="c-orig" width="384" height="256"></canvas>
+      <code id="s-orig">-</code>
+      <div class="meta">scaled to at most 512 px before hashing</div>
+    </figure>
+    <figure>
+      <figcaption>BlurHash <span id="m-blur"></span></figcaption>
+      <canvas id="c-blur" width="384" height="256"></canvas>
+      <code id="s-blur"></code>
+      <div class="meta" id="t-blur"></div>
+    </figure>
+    <figure>
+      <figcaption>DCTHash <span id="m-dct"></span></figcaption>
+      <canvas id="c-dct" width="384" height="256"></canvas>
+      <code id="s-dct"></code>
+      <div class="meta" id="t-dct"></div>
+    </figure>
+  </div>
+
+  <footer>PSNR is measured against the image shown on the left, at the displayed resolution; higher is better.
+    BlurHash here is the <code style="display:inline;padding:1px 4px">blurhash</code> npm package with the
+    chosen grid (swapped for portrait images). DCTHash also stores an approximate aspect ratio and exposes
+    the average colour without decoding.</footer>
+</main>
+<script src="demo.js"></script>
+</body>
+</html>
