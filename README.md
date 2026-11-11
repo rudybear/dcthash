@@ -195,6 +195,113 @@ and 33 dB on solid white. All changes made while freezing are listed in `SPEC.md
 These were re-checked after the colour revision (`results/colour/synthetic.md`); solid black,
 white, red and grey still decode to within 1 level of the right average colour.
 
+### LPIPS as a loss (tried, not adopted)
+
+Suggested by a reader: use LPIPS as a loss term to move towards perceptual similarity. Short
+answer: **at this size it does not help, and the shipped format was left unchanged.** A
+28-character placeholder is so far from the original that LPIPS is outside the range where it
+tracks what people see: its different formulations disagree with each other about which
+placeholder is better, and optimising any of them makes the picture worse to look at. Code:
+`scripts/explore_lpips.py`; tables and sheets: `results/lpips/`.
+
+**1. Which LPIPS?** Six formulations (AlexNet or VGG; against the sharp original at 384x256,
+against the original blurred at sigma = 8 px, or both downsampled to 96 px), on Kodak at 28
+characters, lower is better:
+
+| | alex sharp | vgg sharp | alex blurred-ref | vgg blurred-ref | alex 96 px | vgg 96 px | DISTS |
+|---|---|---|---|---|---|---|---|
+| BlurHash 4x3 | 0.886 | 0.739 | 0.515 | 0.522 | 0.781 | 0.782 | 0.681 |
+| DCTHash, MSE-trained tables (the grey, banded ones) | 0.925 | 0.811 | 0.395 | 0.473 | 0.884 | 0.727 | 0.627 |
+| DCTHash shipped | 0.897 | 0.752 | 0.437 | 0.474 | 0.809 | 0.755 | 0.661 |
+| the original, blurred sigma = 16 px | 0.857 | 0.748 | 0.210 | 0.276 | 0.714 | 0.601 | 0.605 |
+| the original, blurred sigma = 32 px | 0.886 | 0.721 | 0.415 | 0.430 | 0.795 | 0.740 | 0.682 |
+| one flat colour (the image mean) | 0.907 | 0.765 | 0.639 | 0.566 | 0.838 | 0.770 | 0.765 |
+
+- Against the sharp original, LPIPS is saturated: everything lies between 0.86 and 0.93
+  (AlexNet), the MSE-trained DCTHash scores *worse than a flat colour*, and with VGG a heavier
+  blur scores better than a lighter one. Not usable.
+- Against a blurred reference it is well behaved, but then it ranks like PSNR and prefers the
+  MSE-trained tables that were replaced for looking grey and banded.
+- AlexNet at 96 px prefers BlurHash and again puts the MSE tables below a flat colour; VGG at
+  96 px prefers the MSE tables.
+- None of them rewards getting the colour right: they do not separate the grey tables from the
+  colourful ones in the direction the eye does. DISTS and MS-SSIM side with PSNR.
+
+**2. LPIPS to choose the training weights** (chroma weight and low-pass prior; 12 settings
+compared on 96 Picsum photos, `results/lpips/hyper.md`). The answer depends entirely on the
+formulation: AlexNet blurred-ref, VGG 96 px, DISTS, MS-SSIM and PSNR all pick plain MSE
+(chroma x1, no prior), i.e. the tables that were rejected by eye; VGG blurred-ref picks
+chroma x8 with no prior; AlexNet sharp and AlexNet 96 px pick chroma x16 with the prior, more
+extreme than what ships; VGG sharp picks a tighter prior. There is no setting LPIPS agrees on.
+
+**3. LPIPS to train the tables by gradient descent** (decode made differentiable; centres M,
+scales S and loading factors g optimised on 993 Picsum crops with a straight-through
+quantiser; coefficient order and bit sequence fixed; evaluated with the real integer codec,
+`results/lpips/tables.md`):
+
+| training loss, Kodak 28 chars | PSNR | DISTS | OKLab chroma error | colourfulness kept | what it looks like |
+|---|---|---|---|---|---|
+| none (shipped) | 17.61 | 0.661 | 1.70 | 0.80 | |
+| AlexNet blurred-ref | 17.47 | 0.659 | 1.76 | 0.81 | indistinguishable from shipped |
+| VGG blurred-ref | 17.46 | 0.676 | 1.70 | 0.76 | slightly duller |
+| AlexNet 96 px | 11.92 | 0.599 | 3.39 | 1.20 | the same orange-and-blue swirl for every photo |
+| VGG 96 px | 14.25 | 0.645 | 2.20 | 0.84 | collapsed in the same way |
+
+The 96 px losses found a degenerate solution: quantiser ranges shrunk to a fraction of their size, so the
+decoder outputs nearly the same pattern whatever the image, and that pattern scores well on
+LPIPS. It also scores *better on DISTS* (0.599 against 0.661), which was meant to be the
+independent judge, so a held-out network metric is not a safe referee here either. (With
+these tables the normal encoder abandons the photo profile for all 24 images; the row above
+forces it.)
+
+**4. LPIPS in the encoder** (format, tables and decoder unchanged: start from the normal
+encoding and greedily change one quantiser index at a time while the loss of the decoded
+picture falls; `results/lpips/search.md`):
+
+| loss minimised, 28 chars | Kodak PSNR | Kodak DISTS | Kodak chroma error | hold-out PSNR | hold-out DISTS | encode time |
+|---|---|---|---|---|---|---|
+| none (shipped encoder) | 17.61 | 0.661 | 1.70 | 17.59 | 0.654 | under 1 ms (TypeScript) |
+| AlexNet sharp | 13.94 | 0.645 | 2.39 | 13.95 | 0.612 | 0.7 s on a GPU |
+| AlexNet blurred-ref | 16.23 | 0.644 | 1.84 | 16.00 | 0.610 | 0.6 s |
+| VGG blurred-ref | 16.72 | 0.662 | 1.70 | 16.30 | 0.635 | 7.5 s |
+| AlexNet 96 px | 15.00 | 0.652 | 2.96 | 14.49 | 0.628 | 0.5 s |
+| VGG 96 px | 15.52 | 0.654 | 2.02 | 15.44 | 0.639 | 1.1 s |
+| VGG blurred-ref + 10 x MSE | 17.49 | 0.661 | 1.69 | 17.50 | 0.647 | 4.5 s |
+
+Every pure LPIPS search gives up 0.9 to 3.7 dB of PSNR for a DISTS change of at most 0.04, and
+on the sheets the pictures are worse: exaggerated contrast, black blobs and blown-out white
+patches that are not in the photo, colour shifts (a red barn turning pink), and a plaid
+pattern invented on a star field. Adding an MSE term strong enough to stop that (last row)
+leaves a result within 0.1 dB of the normal encoder: it differs from it by about 6 grey levels
+per pixel on average, visibly but not for the better (`results/lpips/mild_search_28ch.png`),
+at several seconds per image and with a neural network in the encoder.
+
+The two least harmful variants at every length (Kodak; full table in
+`results/lpips/lengths.md`). PSNR / DISTS / OKLab chroma error:
+
+| chars | BlurHash best grid | DCTHash shipped | search, AlexNet blurred-ref | search, VGG blurred-ref + 10 x MSE | tables tuned on AlexNet blurred-ref |
+|---|---|---|---|---|---|
+| 20 | 16.65 / 0.681 / 2.07 | 17.30 / 0.677 / 1.82 | 15.76 / 0.658 / 1.98 | 17.22 / 0.676 / 1.81 | 17.13 / 0.675 / 1.92 |
+| 28 | 16.87 / 0.671 / 2.00 | 17.61 / 0.661 / 1.70 | 16.23 / 0.644 / 1.84 | 17.49 / 0.661 / 1.69 | 17.47 / 0.659 / 1.76 |
+| 40 | 17.12 / 0.656 / 1.91 | 17.91 / 0.646 / 1.54 | 16.79 / 0.632 / 1.73 | 17.80 / 0.644 / 1.53 | 17.75 / 0.650 / 1.58 |
+| 60 | 17.40 / 0.633 / 1.83 | 18.30 / 0.628 / 1.37 | 17.48 / 0.615 / 1.53 | 18.18 / 0.628 / 1.38 | 18.14 / 0.636 / 1.37 |
+| 80 | 17.59 / 0.622 / 1.80 | 18.64 / 0.609 / 1.23 | 17.99 / 0.599 / 1.38 | 18.51 / 0.609 / 1.26 | 18.41 / 0.605 / 1.31 |
+
+**Why.** LPIPS compares deep-feature activations that respond mostly to edges and texture. A
+placeholder has neither, so the distance to the original is dominated by what is missing and
+barely changes with what a 160-bit budget can still control (where the blobs are, what colour
+they are). What gradient does remain rewards adding contrast and structure of any kind, which
+is how the artefacts and the collapsed tables arise. The MSE-with-chroma-weight objective plus
+looking at the pictures remains the better tool at this size; LPIPS would become useful at
+budgets where the reconstruction has real edges (hundreds of bytes).
+
+Caveats: the search is greedy and capped at 60 index changes; only LPIPS (AlexNet, VGG) was
+tried, not a loss trained on blurry images; the hold-out set is 8 scikit-image photos of which
+two are the same cat; nothing was tuned on Kodak in this experiment, it was only looked at.
+Sheets (original, BlurHash 4x3 with the reference encoder, shipped, three searches, two tuned
+tables): `results/lpips/kodak_28ch_{1,2,3}.png`, `kodak_40ch_{1,2,3}.png`,
+`holdout_28ch.png`, `holdout_40ch.png`. All lengths: `results/lpips/lengths.md`.
+
 ### TypeScript library: size and speed
 
 | | DCTHash | `blurhash` 2.0.5 (4x3) |
@@ -251,6 +358,8 @@ About half of the decoder bundle is the tables.
 .venv/bin/python scripts/explore_colour.py holdout    # -> results/colour/holdout.md, holdout_28ch.png
 .venv/bin/python scripts/explore_colour.py synthetic  # -> results/colour/synthetic.md
 .venv/bin/python scripts/make_readme_figures.py       # -> docs/comparison_28.png, docs/lengths.png
+# LPIPS experiment (needs torch + GPU, lpips, DISTS_pytorch): formulations | hyper | tables | search | sheets | lengths
+.venv/bin/python scripts/explore_lpips.py formulations   # -> results/lpips/
 cd ts && npm install && npm test && npm run bench
 # demo: open ts/demo/index.html in a browser (after npm run build / npm test)
 ```

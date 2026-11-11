@@ -174,7 +174,8 @@ def _candidate(t, X, length, smooth, scale_code):
     return qs, bits, E
 
 
-def encode(rgba, length=DEFAULT_LENGTH, aspect=True, _tables=None):
+def encode(rgba, length=DEFAULT_LENGTH, aspect=True, _tables=None, _photo_only=False):
+    """`_tables` and `_photo_only` are experiment hooks (alternative table file; skip the smooth candidate)."""
     if not isinstance(length, int) or isinstance(length, bool) or not (MIN_LENGTH <= length <= MAX_LENGTH):
         raise DCTHashError(f"length must be an integer in {MIN_LENGTH}..{MAX_LENGTH}")
     t = load_tables(_tables)
@@ -182,7 +183,7 @@ def encode(rgba, length=DEFAULT_LENGTH, aspect=True, _tables=None):
     h, w = np.asarray(rgba).shape[:2]
     a = aspect_code(w, h) if aspect else ASPECT_UNSPECIFIED
     best = None                                                     # candidates in order: photo scale 0..3, then smooth
-    for smooth, sc in [(False, 0), (False, 1), (False, 2), (False, 3), (True, 0)]:
+    for smooth, sc in [(False, 0), (False, 1), (False, 2), (False, 3), (True, 0)][:4 if _photo_only else 5]:
         qs, bits, E = _candidate(t, X, length, smooth, sc)
         if best is None or E < best[0]:
             best = (E, smooth, sc, qs, bits)

@@ -8,3 +8,4 @@ torchvision
 pytorch-msssim
 lpips
 blurhash
+DISTS_pytorch
